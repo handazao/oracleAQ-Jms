@@ -24,7 +24,7 @@ import oracle.sql.ORADataFactory;
 public class MessageORAData implements ORAData, ORADataFactory {
 
     private Object[] rawData = new Object[8];
-    
+
     private static final MessageORAData MESSAGE_FACTORY = new MessageORAData();
 
     public static ORADataFactory getFactory() {
@@ -55,7 +55,7 @@ public class MessageORAData implements ORAData, ORADataFactory {
 
     /**
      * 消息内容解析并封装
-     * 
+     *
      * @return
      * @author wangqq
      * @date 2020年7月6日 上午8:38:01
@@ -64,7 +64,7 @@ public class MessageORAData implements ORAData, ORADataFactory {
         try {
             return Test.builder()
                 .param_1(rawData[0] == null ? null : rawData[0].toString())
-                .param_2(rawData[0] == null ? null : rawData[0].toString())
+                .param_2(rawData[1] == null ? null : rawData[1].toString())
                 .build();
         } catch (Exception e) {
             log.error(e.getMessage(), e);

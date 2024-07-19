@@ -122,24 +122,22 @@ end pro_queue;
 
 ```xml
 <dependency>
-      <groupId>com.oracle</groupId>
-      <artifactId>jmscommon</artifactId>
-      <version>1.2</version>
+    <groupId>com.oracle.database.jdbc</groupId>
+    <artifactId>ojdbc8</artifactId>
+    <version>12.2.0.1</version>
 </dependency>
+
 <dependency>
-	<groupId>com.oracle</groupId>
-	<artifactId>orai18n</artifactId>
-	<version>1.2</version>
+    <groupId>javax.transaction</groupId>
+    <artifactId>javax.transaction-api</artifactId>
+    <version>1.3</version>
 </dependency>
+
+<!-- https://mvnrepository.com/artifact/com.oracle.database.messaging/aqapi -->
 <dependency>
-	<groupId>com.oracle</groupId>
-	<artifactId>jta</artifactId>
-	<version>1.2</version>
-</dependency>
-<dependency>
-	<groupId>com.oracle</groupId>
-	<artifactId>aqapi_g</artifactId>
-	<version>1.2</version>
+    <groupId>com.oracle.database.messaging</groupId>
+    <artifactId>aqapi</artifactId>
+    <version>19.3.0.0</version>
 </dependency>
 ```
 ### 2.1.2. yml
@@ -738,3 +736,75 @@ public class DateUtil {
 }
 ```
 
+# 三、监控表记录变化通知Java
+
+- 下面的例子创建一个数据表，然后在表中添加触发器，当数据变化后触发器调用存储过程给Oracle AQ发送消息，然后使用Java JMS对消息进行处理。
+
+## 3.1.创建表
+
+- 创建student表，包含username和age两个子段，其中username时varchar2类型，age时number类型。
+```sql
+CREATE TABLE STUDENT (
+  ID NUMBER NOT NULL,
+  USERNAME VARCHAR2(255 BYTE),
+  AGE NUMBER
+)
+```
+
+## 3.2.创建存储过程
+
+- 创建SEND_TYPE_QUEUE_INFO存储过程，因为存储过程中调用dbms数据包，系统包在存储过程中执行需要进行授权（使用sys用户进行授权）
+
+- 注意存储过程中包含commit语句
+
+```sql
+create or replace 
+PROCEDURE SEND_TYPE_QUEUE_INFO (info IN VARCHAR2, msg IN VARCHAR2) as
+  r_enqueue_options DBMS_AQ.ENQUEUE_OPTIONS_T;
+  r_message_properties DBMS_AQ.MESSAGE_PROPERTIES_T;
+  v_message_handle RAW(16);
+  o_payload TYPE_QUEUE_INFO;
+begin
+  o_payload := TYPE_QUEUE_INFO(info, msg);
+
+  dbms_aq.enqueue(
+    queue_name  => 'QUEUE_TEST',
+    enqueue_options => r_enqueue_options,
+    message_properties => r_message_properties,
+    payload => o_payload,
+    msgid => v_message_handle
+  );
+
+  commit;
+end SEND_TYPE_QUEUE_INFO;
+```
+
+## 3.3.创建触发器
+
+- 在student表中创建触发器，当数据写入或更新时，如果age=18，则进行入队操作。需要调用存储过程发送消息，但触发器中不能包含事物提交语句，因此需要使用pragma autonomous_transaction;声明自由事物
+
+```sql
+CREATE OR REPLACE TRIGGER STUDENT_TR
+AFTER INSERT OR UPDATE OF AGE ON STUDENT
+FOR EACH ROW
+DECLARE
+    PRAGMA AUTONOMOUS_TRANSACTION;
+BEGIN
+    IF :NEW.AGE = 18 THEN
+        SEND_TYPE_QUEUE_INFO(:NEW.USERNAME, :NEW.AGE);
+        COMMIT;
+    END IF;
+END;
+```
+
+## 3.4.创建完触发器后向执行插入或更新操作
+
+```sql
+insert into student (username,age) values ('jack', 18);
+update student set age=18 where username='jack003';
+```
+
+
+
+参考:
+<https://www.linuxidc.com/Linux/2015-11/124912.htm>

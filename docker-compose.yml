@@ -1,0 +1,23 @@
+version: '3'
+
+services:
+  oracle11gr2:
+    image: wnameless/oracle-xe-11g-r2
+    container_name: oracle11gr2
+    environment:
+      TZ: Asia/Shanghai
+    ports:
+      - "8080:8080"
+      - "1521:1521"
+    # volumes:
+      # - ./data/oracle:/u01/app/oracle
+    privileged: true
+    # restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: 0.25
+          memory: 1g
+        reservations:
+          # cpus: 0.2
+          memory: 1g
