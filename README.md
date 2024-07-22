@@ -90,29 +90,51 @@ end;
 - 储存过程的作用为把数据加载到队列中，生成的新的队列会自动添加进绑定的对列表中，等待消费者进行消费
 
 ```sql
-CREATE OR REPLACE PROCEDURE pro_queue(param_1 VARCHAR2, param_2 VARCHAR2) as
-  r_enqueue_options    DBMS_AQ.ENQUEUE_OPTIONS_T;
+create or replace 
+PROCEDURE SEND_TYPE_QUEUE_INFO (info IN VARCHAR2, msg IN VARCHAR2) as
+  r_enqueue_options DBMS_AQ.ENQUEUE_OPTIONS_T;
   r_message_properties DBMS_AQ.MESSAGE_PROPERTIES_T;
-  v_message_handle     RAW(16);
-  o_payload            TYPE_QUEUE_INFO;
+  v_message_handle RAW(16);
+  o_payload TYPE_QUEUE_INFO;
 begin
-  -- 封装最终消息
-  o_payload := TYPE_QUEUE_INFO(param_1, param_2);
-  -- 入队操作，指定队列
-  dbms_aq.enqueue(queue_name         => 'QUEUE_TEST',
-                  enqueue_options    => r_enqueue_options,
-                  message_properties => r_message_properties,
-                  payload            => o_payload,
-                  msgid              => v_message_handle);
+  o_payload := TYPE_QUEUE_INFO(info, msg);
 
-  -- 出队操作
-  --dbms_aq.enqueue(queue_name => 'QUEUE_TEST',
-  --                dequeue_options => r_dequeue_options,
-  --                message_properties => r_message_properties,
-  --                payload => o_payload,
-  --                msgid => v_message_handle);
-end pro_queue;
+  dbms_aq.enqueue(
+    queue_name  => 'QUEUE_TEST',
+    enqueue_options => r_enqueue_options,
+    message_properties => r_message_properties,
+    payload => o_payload,
+    msgid => v_message_handle
+  );
+
+  commit;
+end SEND_TYPE_QUEUE_INFO;
 ```
+### 1.2.5 入列操作测试
+- 入列操作是一个基本的事务操作（表数据的插入），因此我们需要Commit
+
+```sql
+declare
+  r_enqueue_options DBMS_AQ.ENQUEUE_OPTIONS_T;
+  r_message_properties DBMS_AQ.MESSAGE_PROPERTIES_T;
+  v_message_handle RAW(16);
+  o_payload TYPE_QUEUE_INFO;
+begin
+  o_payload := TYPE_QUEUE_INFO('Hello','JMS');
+ 
+  dbms_aq.enqueue(
+    queue_name  => 'QUEUE_TEST',
+    enqueue_options => r_enqueue_options,
+    message_properties => r_message_properties,
+    payload => o_payload,
+    msgid => v_message_handle
+  );
+ 
+  commit;
+end;
+```
+
+
 
 # 二、Java中JMS的使用
 
@@ -451,7 +473,7 @@ public class MessageORAData implements ORAData, ORADataFactory {
         try {
             return Test.builder()
                 .param_1(rawData[0] == null ? null : rawData[0].toString())
-                .param_2(rawData[0] == null ? null : rawData[0].toString())
+                .param_2(rawData[1] == null ? null : rawData[1].toString())
                 .build();
         } catch (Exception e) {
             log.error(e.getMessage(), e);
@@ -751,35 +773,7 @@ CREATE TABLE STUDENT (
 )
 ```
 
-## 3.2.创建存储过程
-
-- 创建SEND_TYPE_QUEUE_INFO存储过程，因为存储过程中调用dbms数据包，系统包在存储过程中执行需要进行授权（使用sys用户进行授权）
-
-- 注意存储过程中包含commit语句
-
-```sql
-create or replace 
-PROCEDURE SEND_TYPE_QUEUE_INFO (info IN VARCHAR2, msg IN VARCHAR2) as
-  r_enqueue_options DBMS_AQ.ENQUEUE_OPTIONS_T;
-  r_message_properties DBMS_AQ.MESSAGE_PROPERTIES_T;
-  v_message_handle RAW(16);
-  o_payload TYPE_QUEUE_INFO;
-begin
-  o_payload := TYPE_QUEUE_INFO(info, msg);
-
-  dbms_aq.enqueue(
-    queue_name  => 'QUEUE_TEST',
-    enqueue_options => r_enqueue_options,
-    message_properties => r_message_properties,
-    payload => o_payload,
-    msgid => v_message_handle
-  );
-
-  commit;
-end SEND_TYPE_QUEUE_INFO;
-```
-
-## 3.3.创建触发器
+## 3.2.创建触发器
 
 - 在student表中创建触发器，当数据写入或更新时，如果age=18，则进行入队操作。需要调用存储过程发送消息，但触发器中不能包含事物提交语句，因此需要使用pragma autonomous_transaction;声明自由事物
 
@@ -797,7 +791,7 @@ BEGIN
 END;
 ```
 
-## 3.4.创建完触发器后向执行插入或更新操作
+## 3.3.创建完触发器后向执行插入或更新操作
 
 ```sql
 insert into student (username,age) values ('jack', 18);
